@@ -398,7 +398,8 @@ function updateMacro(d) {
 
 // WebSocket
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
   ws.onmessage = e => {
     const d = JSON.parse(e.data);
     updateMacro(d);
