@@ -2,12 +2,14 @@ from enum import Enum
 
 
 class AssetClass(Enum):
-    STOCK = "Ação"
-    FII = "FII"
-    ETF = "ETF"
-    BDR = "BDR"
+    STOCK  = "Ação"
+    FII    = "FII"
+    ETF    = "ETF"
+    BDR    = "BDR"
     CRYPTO = "Cripto"
-    INDEX = "Índice"
+    DOLAR  = "Dólar"
+    OPCAO  = "Opção"
+    INDEX  = "Índice"
 
 
 # ─── AÇÕES (Ibovespa + IBRX-100 + líquidas) ────────────────────────────────
@@ -55,13 +57,45 @@ CRYPTO = [
     "BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD","ADA-USD","AVAX-USD",
 ]
 
+# ─── Dólar / Câmbio (ETFs dolarizados + futuros referenciados em USD na B3) ─
+DOLAR = [
+    # ETFs dolarizados negociados na B3
+    "IVVB11",   # iShares S&P500 (já está nos ETFs, mas será reclassificado)
+    "SPXI11",   # Xtrackers S&P500
+    "NASD11",   # Nasdaq
+    "ACWI11",   # iShares MSCI ACWI
+    "BNDX11",   # Renda Fixa Global
+    "EURP11",   # Europa
+    # BDRs de grandes techs (USD puro)
+    "AAPL34","MSFT34","AMZN34","GOOGL34","NVDC34","META34","TSLA34",
+]
+
+# ─── Opções mais líquidas da B3 ──────────────────────────────────────────────
+# Convenção BRAPI: código da opção conforme B3 (call/put + strike + vencimento)
+OPCOES = [
+    # Calls PETR4 (as mais negociadas)
+    "PETRF300","PETRF310","PETRF320","PETRF330","PETRF340","PETRF350",
+    "PETRG300","PETRG310","PETRG320","PETRG330","PETRG340",
+    # Calls VALE3
+    "VALEF560","VALEF580","VALEF600","VALEF620",
+    "VALEG560","VALEG580","VALEG600",
+    # Calls BBAS3
+    "BBASF230","BBASF240","BBASF250","BBASG230","BBASG240",
+    # Calls ITUB4
+    "ITUBF140","ITUBF150","ITUBF160","ITUBG140","ITUBG150",
+    # Calls WEGE3
+    "WEGEF480","WEGEF500","WEGEF520","WEGEG480","WEGEG500",
+]
+
 # ─── yfinance suffix por classe ──────────────────────────────────────────────
 YF_SUFFIX = {
     AssetClass.STOCK:  ".SA",
     AssetClass.FII:    ".SA",
     AssetClass.ETF:    ".SA",
     AssetClass.BDR:    ".SA",
-    AssetClass.CRYPTO: "",     # já vem com -USD
+    AssetClass.CRYPTO: "",
+    AssetClass.DOLAR:  ".SA",
+    AssetClass.OPCAO:  ".SA",
     AssetClass.INDEX:  ".SA",
 }
 
@@ -72,8 +106,17 @@ for t in FIIS:    ASSET_CLASS_MAP[t] = AssetClass.FII
 for t in ETFS:    ASSET_CLASS_MAP[t] = AssetClass.ETF
 for t in BDRS:    ASSET_CLASS_MAP[t] = AssetClass.BDR
 for t in CRYPTO:  ASSET_CLASS_MAP[t] = AssetClass.CRYPTO
+# Dólar sobrescreve ETFs/BDRs dolarizados para reclassificá-los
+for t in DOLAR:   ASSET_CLASS_MAP[t] = AssetClass.DOLAR
+for t in OPCOES:  ASSET_CLASS_MAP[t] = AssetClass.OPCAO
 
-ALL_TICKERS: list[str] = STOCKS + FIIS + ETFS + BDRS + CRYPTO
+# ALL_TICKERS sem duplicatas, mantendo ordem
+_seen: set[str] = set()
+ALL_TICKERS: list[str] = []
+for t in STOCKS + FIIS + ETFS + BDRS + CRYPTO + DOLAR + OPCOES:
+    if t not in _seen:
+        _seen.add(t)
+        ALL_TICKERS.append(t)
 
 
 def yf_symbol(ticker: str) -> str:

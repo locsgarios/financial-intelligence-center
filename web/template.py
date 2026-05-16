@@ -30,6 +30,8 @@ HTML = r"""<!DOCTYPE html>
   .badge-etf { background:#0f3460; color:#93c5fd; }
   .badge-bdr { background:#3b0764; color:#e9d5ff; }
   .badge-crp { background:#431407; color:#fdba74; }
+  .badge-dol { background:#064e3b; color:#6ee7b7; }
+  .badge-opc { background:#1c1917; color:#d4d4aa; }
   ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:#0a0e1a; }
   ::-webkit-scrollbar-thumb { background:#334155; border-radius:3px; }
   .glow-green { box-shadow:0 0 12px rgba(34,197,94,.25); }
@@ -90,6 +92,8 @@ HTML = r"""<!DOCTYPE html>
   <button class="tab-btn" data-ftype="cls" data-fval="ETF">ETFs</button>
   <button class="tab-btn" data-ftype="cls" data-fval="BDR">BDRs</button>
   <button class="tab-btn" data-ftype="cls" data-fval="Cripto">Cripto</button>
+  <button class="tab-btn" data-ftype="cls" data-fval="Dólar">💵 Dólar</button>
+  <button class="tab-btn" data-ftype="cls" data-fval="Opção">📋 Opções</button>
   <span class="text-slate-600 mx-1">|</span>
   <span class="text-slate-500 text-xs mr-1">Tipo:</span>
   <button class="tab-btn active" data-ftype="op" data-fval="">Todos</button>
@@ -203,8 +207,16 @@ function signalClass(sig) {
 }
 
 function clsBadge(cls) {
-  const map = {'Ação':'badge-acao','FII':'badge-fii','ETF':'badge-etf','BDR':'badge-bdr','Cripto':'badge-crp'};
-  return `<span class="badge ${map[cls]||'badge-acao'}">${cls==='Ação'?'AÇÃ':cls.substring(0,3)}</span>`;
+  const map = {
+    'Ação':'badge-acao','FII':'badge-fii','ETF':'badge-etf',
+    'BDR':'badge-bdr','Cripto':'badge-crp',
+    'Dólar':'badge-dol','Opção':'badge-opc'
+  };
+  const lbl = {
+    'Ação':'AÇÃo','FII':'FII','ETF':'ETF','BDR':'BDR',
+    'Cripto':'CRP','Dólar':'DOL','Opção':'OPC'
+  };
+  return `<span class="badge ${map[cls]||'badge-acao'}">${lbl[cls]||cls.substring(0,3)}</span>`;
 }
 
 function opBadge(op) {
