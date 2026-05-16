@@ -78,7 +78,7 @@ def _serialize_opp(opp) -> dict:
 
 
 def _get_payload() -> dict:
-    top   = _scanner.get_top(20) if _scanner else []
+    top   = _scanner.get_top(200) if _scanner else []
     stats = _scanner.get_stats()  if _scanner else {}
     macro = _macro()              if _macro   else None
 
