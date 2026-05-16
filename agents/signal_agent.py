@@ -6,50 +6,96 @@ from agents import technical_agent as ta_agent
 from agents import risk_agent
 from agents.macro_agent import get_macro
 
-
 def _score_fundamental(q: dict, cls: AssetClass) -> float:
     """Score fundamentalista (0-15)."""
     score = 5.0
 
     if cls == AssetClass.FII:
-        dy = q.get("dividendYield") or 0
-        if dy >= 10:    score += 5
-        elif dy >= 8:   score += 4
-        elif dy >= 6:   score += 3
-        elif dy >= 4:   score += 1
-        pl = q.get("priceEarnings") or 0
+        dy = q.get('dividendYield') or 0
+        if dy >= 10: score += 5
+        elif dy >= 8: score += 4
+        elif dy >= 6: score += 3
+        elif dy >= 4: score += 1
+        pl = q.get('priceEarnings') or 0
         if 0 < pl <= 15: score += 3
-        elif pl <= 25:   score += 1
+        elif pl <= 25: score += 1
         return min(score, 15)
 
     if cls in (AssetClass.ETF, AssetClass.CRYPTO):
         return 7.5  # ETFs e cripto: score neutro
 
-    # Ações e BDRs
-    pl = q.get("priceEarnings") or 0
-    if 0 < pl <= 8:     score += 5
-    elif 0 < pl <= 15:  score += 4
-    elif 0 < pl <= 25:  score += 2
-    elif pl > 25:       score -= 1
+    # Acoes e BDRs
+    pl = q.get('priceEarnings') or 0
+    if 0 < pl <= 8: score += 5
+    elif 0 < pl <= 15: score += 4
+    elif 0 < pl <= 25: score += 2
+    elif pl > 25: score -= 1
 
-    pvp = q.get("priceToBook") or 0
-    if 0 < pvp <= 1:    score += 3
-    elif 0 < pvp <= 2:  score += 2
-    elif 0 < pvp <= 3:  score += 1
+    pvp = q.get('priceToBook') or 0
+    if 0 < pvp <= 1: score += 3
+    elif 0 < pvp <= 2: score += 2
+    elif 0 < pvp <= 3: score += 1
 
-    dy = q.get("dividendYield") or 0
-    if dy >= 8:     score += 3
-    elif dy >= 5:   score += 2
-    elif dy >= 3:   score += 1
+    dy = q.get('dividendYield') or 0
+    if dy >= 8: score += 3
+    elif dy >= 5: score += 2
+    elif dy >= 3: score += 1
 
-    roe = q.get("returnOnEquityTTM") or 0
-    if roe >= 20:   score += 4
+    roe = q.get('returnOnEquityTTM') or 0
+    if roe >= 20: score += 4
     elif roe >= 15: score += 3
     elif roe >= 10: score += 2
-    elif roe >= 5:  score += 1
+    elif roe >= 5: score += 1
 
     return round(min(max(score, 0), 15), 1)
 
+def _score_sentiment(q: dict, cls: AssetClass) -> float:
+    """
+    Score de sentimento de mercado (0-10) calculado a partir dos dados
+    da propria cotacao BRAPI -- sem API externa adicional.
+    Componentes:
+      - Volume relativo vs media 3 meses (volume spike = interesse)
+      - Variacao do dia (momentum intradiaIy)
+      - Posicao dentro da faixa de 52 semanas (proximo de minima = oportunidade)
+    """
+    score = 5.0
+
+    # 1) Volume spike
+    vol = q.get('regularMarketVolume') or 0
+    avg_vol = q.get('averageDailyVolume3Month') or 0
+    if avg_vol > 0:
+        ratio = vol / avg_vol
+        if ratio >= 3.0: score += 3.0
+        elif ratio >= 2.0: score += 2.0
+        elif ratio >= 1.5: score += 1.0
+        elif ratio >= 1.0: score += 0.3
+        elif ratio < 0.4: score -= 1.0
+
+    # 2) Variacao intraday
+    var = q.get('regularMarketChangePercent') or 0
+    if var >= 4:   score += 2.0
+    elif var >= 2: score += 1.0
+    elif var >= 0: score += 0.3
+    elif var <= -4: score -= 2.0
+    elif var <= -2: score -= 1.0
+
+    # 3) Posicao 52 semanas (proximo da minima = potencial de alta)
+    hi = q.get('fiftyTwoWeekHigh') or 0
+    lo = q.get('fiftyTwoWeekLow') or 0
+    price = q.get('regularMarketPrice') or 0
+    if hi > lo and price > 0:
+        pos = (price - lo) / (hi - lo)  # 0=minima, 1=maxima
+        if pos <= 0.15:   score += 2.5  # muito proximo da minima
+        elif pos <= 0.30: score += 1.5
+        elif pos <= 0.50: score += 0.5
+        elif pos >= 0.90: score -= 1.5  # proximo da maxima = sobrecomprado
+        elif pos >= 0.75: score -= 0.5
+
+    # Cripto tem sentimento mais volatil -- aplicar fator de reducao
+    if cls == AssetClass.CRYPTO:
+        score = 5.0 + (score - 5.0) * 0.5
+
+    return round(min(max(score, 0), 10), 1)
 
 def _score_macro(ticker: str) -> float:
     ctx = get_macro()
@@ -57,31 +103,28 @@ def _score_macro(ticker: str) -> float:
     boost = ctx.sector_boost(ticker)
     return round(min(max(base + boost, 0), 15), 1)
 
-
 def _score_timing(var_day: float, td: TechnicalData) -> float:
     """Score de timing (0-5)."""
     score = 2.0
-    if var_day > 0 and td.trend == "ALTA":   score += 2
-    if var_day < 0 and td.trend == "BAIXA":  score -= 1
-    if td.pattern in ("Cruzamento MACD Alta", "RSI Sobrevenda", "Suporte Bollinger", "Golden Cross"):
+    if var_day > 0 and td.trend == 'ALTA': score += 2
+    if var_day < 0 and td.trend == 'BAIXA': score -= 1
+    if td.pattern in ('Cruzamento MACD Alta', 'RSI Sobrevenda', 'Suporte Bollinger', 'Golden Cross'):
         score += 1
     return round(min(max(score, 0), 5), 1)
 
-
 def _determine_op_type(td: TechnicalData, var_day: float, volume: float) -> OpType:
-    """Define se é Day Trade, Swing ou Posição."""
+    """Define se e Day Trade, Swing ou Posicao."""
     has_strong_momentum = abs(var_day) > 1.5 and volume > 5_000_000
     rsi = td.rsi or 50
 
-    if has_strong_momentum and td.trend in ("ALTA", "BAIXA"):
+    if has_strong_momentum and td.trend in ('ALTA', 'BAIXA'):
         return OpType.DAY_TRADE
 
-    if (td.pattern in ("Cruzamento MACD Alta", "RSI Sobrevenda", "Golden Cross") or
-            (rsi < 35 and td.trend != "BAIXA")):
+    if (td.pattern in ('Cruzamento MACD Alta', 'RSI Sobrevenda', 'Golden Cross') or
+            (rsi < 35 and td.trend != 'BAIXA')):
         return OpType.SWING
 
     return OpType.POSITION
-
 
 def _determine_signal(score: ScoreBreakdown, td: TechnicalData, var_day: float) -> SignalType:
     t = score.total
@@ -89,36 +132,35 @@ def _determine_signal(score: ScoreBreakdown, td: TechnicalData, var_day: float) 
     trend = td.trend
 
     # Sinais de venda/stop
-    if rsi > 75 and trend == "BAIXA":
+    if rsi > 75 and trend == 'BAIXA':
         return SignalType.SELL
-    if td.pattern == "Death Cross":
+    if td.pattern == 'Death Cross':
         return SignalType.STOP
-    if var_day < -3 and trend == "BAIXA":
+    if var_day < -3 and trend == 'BAIXA':
         return SignalType.STOP
     if rsi > 70 and var_day > 2:
         return SignalType.PARTIAL_SELL
 
     # Sinais de compra
-    if t >= 85:  return SignalType.BUY_STRONG
-    if t >= 70:  return SignalType.BUY
-    if t >= 55:  return SignalType.BUY_SPEC
-    if t >= 40:  return SignalType.WATCH
+    if t >= 85: return SignalType.BUY_STRONG
+    if t >= 70: return SignalType.BUY
+    if t >= 55: return SignalType.BUY_SPEC
+    if t >= 40: return SignalType.WATCH
     return SignalType.WAIT
 
-
 def build_opportunity(ticker: str, quote: dict) -> Opportunity | None:
-    """Constrói uma Opportunity completa a partir da cotação da BRAPI."""
-    price = quote.get("regularMarketPrice") or 0
+    """Constroi uma Opportunity completa a partir da cotacao da BRAPI."""
+    price = quote.get('regularMarketPrice') or 0
     if not price:
         return None
 
-    var_day   = quote.get("regularMarketChangePercent") or 0
-    volume    = quote.get("regularMarketVolume") or 0
-    mkt_cap   = quote.get("marketCap")
-    name      = (quote.get("shortName") or quote.get("longName") or ticker)[:28]
-    cls       = get_class(ticker)
+    var_day = quote.get('regularMarketChangePercent') or 0
+    volume = quote.get('regularMarketVolume') or 0
+    mkt_cap = quote.get('marketCap')
+    name = (quote.get('shortName') or quote.get('longName') or ticker)[:28]
+    cls = get_class(ticker)
 
-    # Análise técnica
+    # Analise tecnica
     td, tech_score = ta_agent.analyze(ticker, price, var_day, volume)
 
     # Op type
@@ -127,55 +169,67 @@ def build_opportunity(ticker: str, quote: dict) -> Opportunity | None:
     # Stops via ATR
     stop, target = ta_agent.calc_stops(ticker, price, op_type)
     entry = round(price, 2)
-    rr    = risk_agent.calc_rr(entry, stop, target)
+    rr = risk_agent.calc_rr(entry, stop, target)
 
     # Scores
-    fund_score  = _score_fundamental(quote, cls)
+    fund_score = _score_fundamental(quote, cls)
     macro_score = _score_macro(ticker)
-    liq_score   = risk_agent.score_liquidity(volume, mkt_cap)
-    rr_score    = risk_agent.score_risk_reward(rr, op_type)
+    liq_score = risk_agent.score_liquidity(volume, mkt_cap)
+    rr_score = risk_agent.score_risk_reward(rr, op_type)
     timing_score = _score_timing(var_day, td)
+    sent_score = _score_sentiment(quote, cls)  # calculado via dados BRAPI
 
     score = ScoreBreakdown(
-        technical   = tech_score,
+        technical  = tech_score,
         fundamental = fund_score,
-        macro       = macro_score,
-        sentiment   = 5.0,   # placeholder — agente de notícias (MVP 2)
-        liquidity   = liq_score,
+        macro      = macro_score,
+        sentiment  = sent_score,
+        liquidity  = liq_score,
         risk_reward = rr_score,
-        backtest    = 5.0,   # placeholder — agente de backtest (MVP 2)
-        timing      = timing_score,
+        backtest   = 5.0,  # placeholder -- agente de backtest (MVP 3)
+        timing     = timing_score,
     )
 
-    signal     = _determine_signal(score, td, var_day)
+    signal = _determine_signal(score, td, var_day)
     risk_level = risk_agent.classify_risk(score, op_type)
 
     # Motivos principais
     reasons: list[str] = []
-    risks:   list[str] = []
+    risks: list[str] = []
 
     if td.rsi and td.rsi < 35:
-        reasons.append(f"RSI {td.rsi:.0f} — sobrevenda")
-    if td.trend == "ALTA":
-        reasons.append("Tendência de alta confirmada (MA20 > MA50)")
+        reasons.append('RSI ' + str(round(td.rsi)) + ' -- sobrevenda')
+    if td.trend == 'ALTA':
+        reasons.append('Tendencia de alta confirmada (MA20 > MA50)')
     if td.pattern:
         reasons.append(td.pattern)
-    if (quote.get("priceEarnings") or 0) > 0 and (quote.get("priceEarnings") or 99) < 12:
-        reasons.append(f"P/L {quote['priceEarnings']:.1f}x — valor atrativo")
-    if (quote.get("dividendYield") or 0) >= 6:
-        reasons.append(f"DY {quote['dividendYield']:.1f}% — renda relevante")
+    if (quote.get('priceEarnings') or 0) > 0 and (quote.get('priceEarnings') or 99) < 12:
+        reasons.append('P/L ' + '{:.1f}x'.format(quote['priceEarnings']) + ' -- valor atrativo')
+    if (quote.get('dividendYield') or 0) >= 6:
+        reasons.append('DY ' + '{:.1f}%'.format(quote['dividendYield']) + ' -- renda relevante')
     if rr >= 2:
-        reasons.append(f"R:R {rr:.1f}x — boa assimetria")
+        reasons.append('R:R ' + '{:.1f}x'.format(rr) + ' -- boa assimetria')
+    # Sentimento de mercado
+    vol = quote.get('regularMarketVolume') or 0
+    avg_vol = quote.get('averageDailyVolume3Month') or 0
+    if avg_vol > 0 and vol / avg_vol >= 2:
+        reasons.append('Volume ' + '{:.1f}x'.format(vol/avg_vol) + ' acima da media -- forte interesse')
+    hi52 = quote.get('fiftyTwoWeekHigh') or 0
+    lo52 = quote.get('fiftyTwoWeekLow') or 0
+    if hi52 > lo52 and price > 0:
+        pos52 = (price - lo52) / (hi52 - lo52)
+        if pos52 <= 0.20:
+            reasons.append('Proximo da minima de 52 semanas -- oportunidade historica')
 
     if td.rsi and td.rsi > 70:
-        risks.append(f"RSI {td.rsi:.0f} — sobrecomprado")
-    if td.trend == "BAIXA":
-        risks.append("Tendência de baixa")
+        risks.append('RSI ' + str(round(td.rsi)) + ' -- sobrecomprado')
+    if td.trend == 'BAIXA':
+        risks.append('Tendencia de baixa')
     if volume < 500_000:
-        risks.append("Baixa liquidez")
+        risks.append('Baixa liquidez')
     macro = get_macro()
     if macro.selic and macro.selic > 13:
-        risks.append(f"Selic {macro.selic:.2f}% eleva custo de capital")
+        risks.append('Selic ' + '{:.2f}%'.format(macro.selic) + ' eleva custo de capital')
 
     return Opportunity(
         ticker      = ticker,
